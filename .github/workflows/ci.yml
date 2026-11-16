@@ -54,7 +54,7 @@ jobs:
           "$RUNNER_TEMP/test-controller-map"
       - name: Check the Android dual-screen companion's game-state reader with the undefined-behavior sanitizer
         run: |
-          clang -std=gnu11 -Wall -Wextra -Werror -D_GNU_SOURCE -DTOTK_GAME_V143=1 -Igames/totk/runtime -fsanitize=undefined -fno-sanitize-recover=all \
+          clang -std=gnu11 -Wall -Wextra -Werror -D_GNU_SOURCE -DTOTK_GAME_V143=1 -DCOMPANION_ACTIONS_TEST -Igames/totk/runtime -fsanitize=undefined -fno-sanitize-recover=all \
             games/totk/tests/companion/test_companion.c games/totk/runtime/companion_snapshot.c games/totk/runtime/companion_actions.c -o "$RUNNER_TEMP/test-companion" -lm -lpthread
           "$RUNNER_TEMP/test-companion"
 
