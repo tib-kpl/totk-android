@@ -7,7 +7,7 @@ the game version it runs is shown separately. versionCode = major × 10000 + min
 
 ### Added
 - French menu and setup texts (`StringsFr.java`), used when the device language is French; other languages stay English.
-- `.github/workflows/release.yml` builds the signed release APK on every push to `main` and publishes it as a GitHub release.
+- `.github/workflows/ci.yml` (one pipeline: tests, then on `main` the signed release APK published as a GitHub release).
 
 ### Developer tools
 - Add launch-only, default-off `TOTK_BENCH_TIME=HH:MM` for restored-save benchmark arms.
