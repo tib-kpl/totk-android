@@ -1,7 +1,7 @@
 name: CI
 
-# One pipeline: the source regression tests run on every push and pull request; on a push to main, once they pass,
-# the signed release APK is built and published as a GitHub release.
+# One pipeline: on a push to main the signed release APK is built and published as a GitHub release first; the
+# source regression tests then run (on every push and pull request, whatever the release did).
 # The signing key is the RELEASE_KEY_PEM_B64 repository secret (base64 of a PEM private key + certificate).
 # Keep that key: every later APK must be signed with it or Android refuses the update.
 
@@ -19,6 +19,8 @@ permissions:
 
 jobs:
   test:
+    needs: release
+    if: ${{ !cancelled() }}
     runs-on: macos-latest
     timeout-minutes: 10
     steps:
@@ -51,7 +53,6 @@ jobs:
           "$RUNNER_TEMP/test-companion"
 
   release:
-    needs: test
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     permissions:
