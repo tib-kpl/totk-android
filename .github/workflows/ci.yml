@@ -105,6 +105,8 @@ jobs:
               apt-get install -y --no-install-recommends ca-certificates git python3 python3-venv python3-pip ninja-build pkg-config dpkg-dev xz-utils
               git config --global --add safe.directory "*"
               bash games/totk/android/turnip/build.sh'
+          # the container ran as root: give the build folder back to the runner user
+          sudo chown -R "$(id -u):$(id -g)" games/totk/build
       - name: Write the signing key
         env:
           KEY_B64: ${{ secrets.RELEASE_KEY_PEM_B64 }}
