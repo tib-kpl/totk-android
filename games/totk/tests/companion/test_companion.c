@@ -129,7 +129,7 @@ static struct {
     uint64_t now;
 } T;
 static uint64_t fake_call(uint64_t fn, uint64_t a0, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
-    (void)a4; (void)a5;
+    (void)a0; (void)a4; (void)a5;
     T.calls++;
     int cat = (int)a1, slot = (int)a2;
     switch ((uint32_t)(fn - (uintptr_t)T.main)) {
