@@ -27,7 +27,7 @@ public final class UpdateReceiver extends BroadcastReceiver {
             String why = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
             result(context, status == PackageInstaller.STATUS_FAILURE_ABORTED
                     ? "Update cancelled in Android’s installer. You can try again next launch."
-                    : "Update not installed: " + (why == null ? "Android refused the installation." : why));
+                    : Strings.tr("Update not installed: ") + (why == null ? Strings.tr("Android refused the installation.") : why));
         }
         clean(context);
     }

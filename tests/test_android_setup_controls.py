@@ -71,6 +71,7 @@ class SetupService {
 class Strings {
     static final String SAVE_WAIT_TIMEOUT = "save timeout", CLOSE_GAME_TIMEOUT = "close timeout";
     static String gameLockError(String reason) { return reason; }
+    static String tr(String english) { return english; }
 }
 class BaseActivity { protected void onStart() {} protected void onStop() {} }
 class Handler {

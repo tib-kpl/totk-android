@@ -44,7 +44,7 @@ final class UpdateInstaller {
         this.version = version;
         cancelled = false;
         transfer = new UpdateTransfer();
-        status = "Downloading update…";
+        status = Strings.tr("Downloading update…");
         listener.changed();
         worker.execute(() -> {
             try {
@@ -55,7 +55,7 @@ final class UpdateInstaller {
                     bytes = count; total = size;
                     // The menu refresh timer reads these; don't queue one UI message per chunk.
                 });
-                postStatus("Verifying download…");
+                postStatus(Strings.tr("Verifying download…"));
                 transfer.download(source.base, source.override, source.asset(version, true), checksum, 4096, (count, size) -> { });
                 transfer.checkCancelled();
                 transfer.finishDownloads();
@@ -104,7 +104,7 @@ final class UpdateInstaller {
         else finish("Update not installed: permission was not allowed. You can try again next launch.");
     }
     private void install() {
-        status = "Preparing Android installer…"; listener.changed();
+        status = Strings.tr("Preparing Android installer…"); listener.changed();
         worker.execute(() -> {
             try {
                 transfer.checkCancelled();
@@ -130,7 +130,7 @@ final class UpdateInstaller {
                     committed = true;
                 }
                 cleanFiles();
-                postStatus("Confirm the update in Android’s installer.");
+                postStatus(Strings.tr("Confirm the update in Android’s installer."));
             } catch (Exception failed) { fail(failed); }
         });
     }
@@ -138,7 +138,7 @@ final class UpdateInstaller {
         activity.runOnUiThread(() -> { if (!cancelled && !disposed) { status = value; listener.changed(); } });
     }
     private void fail(Exception failed) {
-        activity.runOnUiThread(() -> { if (!cancelled && !disposed) finish("Update not installed: " + (failed.getMessage() == null ? failed.toString() : failed.getMessage())); });
+        activity.runOnUiThread(() -> { if (!cancelled && !disposed) finish(Strings.tr("Update not installed: ") + (failed.getMessage() == null ? failed.toString() : failed.getMessage())); });
         cleanFiles();
         abandon();
     }

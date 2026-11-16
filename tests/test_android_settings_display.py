@@ -48,7 +48,7 @@ class ActivityManager {
     }
 }
 class Icon {static Object createWithBitmap(Object bitmap){return bitmap;}}
-class Strings {static final String SHORTCUT_SETTINGS="Settings";}
+class Strings {static final String SHORTCUT_SETTINGS="Settings"; static String tr(String english){return english;}}
 class ShortcutInfo {
     final String id; final Intent intent; ShortcutInfo(String id,Intent intent){this.id=id;this.intent=intent;}
     String getId(){return id;} Intent getIntent(){return intent;}
