@@ -93,7 +93,7 @@ jobs:
         if: steps.turnip-cache.outputs.cache-hit != 'true'
         env:
           TURNIP_VARIANTS: release
-        run: sh games/totk/android/turnip/build.sh
+        run: bash games/totk/android/turnip/build.sh
       - name: Write the signing key
         env:
           KEY_B64: ${{ secrets.RELEASE_KEY_PEM_B64 }}
