@@ -479,6 +479,7 @@ final class Widgets {
     static final class Row extends LinearLayout {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF box = new RectF();
+        private LinearLayout textBox;
         final TextView label, hint;
         private Icon icon;
         private final float radius;
@@ -504,6 +505,7 @@ final class Widgets {
             if (hintText == null) hint.setVisibility(GONE);
             text.addView(hint, margins(size(-1, -2), 0, 4, 0, 0));
             addView(text, new LayoutParams(0, -2, 1));
+            textBox = text;
         }
         /** Leading icon in a ring of the given diameter (home menu: 62 px ring, 30 px glyph). */
         Row icon(String name, float circle, float glyph) {
@@ -518,6 +520,8 @@ final class Widgets {
             if (value != null) removeView(value);
             value = view;
             if (view != null) addView(view, new LayoutParams(-2, -2));
+            // a longer label or hint must not touch the right-hand text
+            ((LayoutParams) textBox.getLayoutParams()).rightMargin = view == null ? 0 : Theme.u(18);
             return this;
         }
         Row adjust(Adjust adjust) { this.adjust = adjust; return this; }

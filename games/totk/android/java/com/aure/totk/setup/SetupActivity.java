@@ -242,7 +242,7 @@ public final class SetupActivity extends Activity implements SetupService.Listen
         if (!message.isEmpty()) finishAppUpdate(message);
     }
     private Widgets.Row updateSwitch(LinearLayout parent) {
-        Widgets.Row row = new Widgets.Row(this, Strings.UPDATE_CHECK, "On by default · no uploads or automatic installation", 26, 18);
+        Widgets.Row row = new Widgets.Row(this, Strings.UPDATE_CHECK, Strings.tr("On by default · no uploads or automatic installation"), 26, 18);
         row.setTag("update:checks");
         Widgets.Toggle toggle = new Widgets.Toggle(this);
         toggle.set(UpdateRules.enabled(getFilesDir()));
@@ -1588,7 +1588,7 @@ public final class SetupActivity extends Activity implements SetupService.Listen
             case "storage": case "again": {
                 detailText.setText(Strings.STORAGE_TEXT);
                 for (StorageLocation.Volume v : StorageLocation.volumes(this))
-                    fact(v.name, Strings.bytes(v.free) + " free" + (v.kind == StoragePaths.Kind.PRIVATE ? " · " + Strings.FASTER : ""));
+                    fact(v.name, Strings.bytes(v.free) + Strings.tr(" free") + (v.kind == StoragePaths.Kind.PRIVATE ? " · " + Strings.FASTER : ""));
                 if (!StorageLocation.available(this)) fact(StorageLocation.label(this), Strings.NOT_AVAILABLE);
                 fact(Strings.ACCESS_ROW, FileAccess.granted() ? Strings.ACCESS_ON : Strings.ACCESS_OFF);
                 break;
@@ -1746,10 +1746,10 @@ public final class SetupActivity extends Activity implements SetupService.Listen
             detailTitle.setText(Strings.STORAGE_ROW);
             detailText.setText(Strings.STORAGE_TEXT);
             if (moving) fact(Strings.INSTALLED, Strings.size(size));
-            for (StorageLocation.Volume v : volumes) fact(v.name, Strings.bytes(v.free) + " free");
+            for (StorageLocation.Volume v : volumes) fact(v.name, Strings.bytes(v.free) + Strings.tr(" free"));
         }
         int cards = volumes.size() + 1;
-        float height = cards >= 4 ? 114 : 150, gap = cards >= 4 ? 12 : 18;
+        float height = cards >= 3 ? 114 : 150, gap = cards >= 3 ? 12 : 18;   // 3 cards + the access row must stay inside the panel
         Widgets.Card first = null;
         for (int i = 0; i < volumes.size(); i++) {
             StorageLocation.Volume v = volumes.get(i);
@@ -2377,11 +2377,11 @@ public final class SetupActivity extends Activity implements SetupService.Listen
             if (v == versionRow) {
                 detailTitle.setText(Strings.APP); detailText.setText(Strings.ABOUT_TEXT);
                 fact(Strings.VERSION_ROW, version);
-                fact("Game", Strings.GAME_VERSION);
+                fact(Strings.tr("Game"), Strings.GAME_VERSION);
                 fact("Build", Strings.build(buildCommit()));
                 fact(Strings.DETECTED, detected());
                 if (install.setupVersion() > 0) fact("Install", Strings.setupFormat(install.setupVersion(), install.route()));
-                fact("Setup", Strings.library(InstallState.libraryAvailable()));
+                fact(Strings.tr("Setup"), Strings.library(InstallState.libraryAvailable()));
             } else if (v == licencesRow) {
                 detailTitle.setText(Strings.LICENCES_ROW); detailText.setText(Strings.LICENCES_TEXT);
                 fact("Files", String.valueOf(licenceFiles().size()));
@@ -2508,7 +2508,7 @@ public final class SetupActivity extends Activity implements SetupService.Listen
         if (storageBar == null) return;
         long free = install.freeBytes(), need = install.neededBytes(), total = install.totalBytes();
         storageBar.set(total, free, need);
-        storageText.setText("needs " + Strings.bytes(need) + " · " + Strings.bytes(free) + " free" + (free >= need ? "" : " — " + Strings.storageShort(need - free)));
+        storageText.setText(Strings.tr("needs ") + Strings.bytes(need) + " · " + Strings.bytes(free) + Strings.tr(" free") + (free >= need ? "" : " — " + Strings.storageShort(need - free)));
         storageText.setTextColor(free >= need ? Theme.TEXT2 : Theme.WARN);
     }
 
@@ -2519,7 +2519,7 @@ public final class SetupActivity extends Activity implements SetupService.Listen
         TextView legal = Theme.paragraph(this, Strings.LEGAL, 18, Theme.AMBER);
         legal.setGravity(Gravity.CENTER_HORIZONTAL);
         board.put(legal, 440, 700, 620, Widgets.Board.WRAP, Widgets.Board.CENTER, Widgets.Board.START);
-        Widgets.Panel box = panel(880, 150, 920, 740, true, 56, 50);
+        Widgets.Panel box = panel(880, 150, 920, 810, true, 56, 50);   // taller than the English text needs: the French one is longer
         heading(box, Strings.WELCOME_TITLE, 36);
         lead(box, Strings.WELCOME_BODY, 14);
         storageLine(box, 30);

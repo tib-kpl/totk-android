@@ -250,7 +250,7 @@ final class Strings {
     }
     static String addedLatency(String key, String value) {
         if (key.equals("frame_gen")) return value.equals("on") ? tr("≈ 33 ms") : "none";
-        switch (value) { case "responsive": return "lowest"; case "balanced": return "low"; default: return tr("up to one more frame"); }
+        switch (value) { case "responsive": return tr("lowest"); case "balanced": return tr("low"); default: return tr("up to one more frame"); }
     }
 
     // Diagram captions
@@ -317,7 +317,7 @@ final class Strings {
     static final String SETUP_STORAGE_TITLE = tr("Where should the game go?");
     static final String SETUP_STORAGE_LEAD = tr("The game data needs about 19 GB. Internal storage is fastest; an SD card keeps the device free. You can move it later from Game data.");
     static final String STEP_STORAGE = tr("Storage"), STEP_STORAGE_TEXT = tr("Internal storage, an SD card or a folder");
-    static final String IN_USE_STATE = tr("In use"), NOT_ENOUGH = tr("Not enough space"), FASTER = "fastest", CHOOSE_STATE = tr("Choose");
+    static final String IN_USE_STATE = tr("In use"), NOT_ENOUGH = tr("Not enough space"), FASTER = tr("fastest"), CHOOSE_STATE = tr("Choose");
     static final String NOT_AVAILABLE = tr("not available");
     static String volumeLine(long free, long need) { return bytes(free) + tr(" free · needs ") + bytes(need); }
     static String storageValue(String name, long free) { return name + " · " + bytes(free) + tr(" free"); }
@@ -717,6 +717,6 @@ final class Strings {
     static String setupFormat(int setupVersion, String route) {
         return tr("Install format ") + setupVersion + (route.isEmpty() ? "" : " · " + route + tr(" route")) + tr(" · game 1.4.3");
     }
-    static String library(boolean present) { return tr("Setup library ") + (present ? "present" : "missing"); }
+    static String library(boolean present) { return tr("Setup library ") + (present ? tr("present") : tr("missing")); }
     static String doneIn(long seconds) { return seconds <= 0 ? DONE : DONE + " · " + (seconds < 120 ? seconds + tr(" s") : (seconds + 30) / 60 + tr(" min")); }
 }
