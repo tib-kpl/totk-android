@@ -1262,6 +1262,8 @@ class PanRelease(unittest.TestCase):
             self.assertEqual(events.read_text().splitlines()[-3:], ['/fake 3 2 0', '/fake 3 5 0', '/fake 0 0 0'])
             self.assertEqual(list(dev.game.glob('.bench-pan-*')), [])
 
+    @unittest.skipUnless(Path('/sys/devices/system/cpu/cpu0/cpufreq').is_dir(),
+                         'the fake device reads this host's cpufreq limits (VMs have none)')
     def test_host_signal_cancels_owned_batch_without_waiting_for_its_broker(self):
         for group in (False, True):
             with self.subTest(process_group=group), fake_device() as dev:
