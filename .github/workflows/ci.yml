@@ -97,9 +97,14 @@ jobs:
           key: turnip-${{ hashFiles('games/totk/android/turnip/**') }}
       - name: Build the Turnip driver
         if: steps.turnip-cache.outputs.cache-hit != 'true'
-        env:
-          TURNIP_VARIANTS: release
-        run: bash games/totk/android/turnip/build.sh
+        # The recipe pins Ubuntu 26.04 build tools (bison, flex, m4, glslang, spirv-tools), so it runs in that
+        # image; the paths are the same inside and outside so the driver is byte-identical.
+        run: |
+          docker run --rm -e TURNIP_VARIANTS=release -e ANDROID_NDK_HOME             -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -v "$ANDROID_NDK_HOME:$ANDROID_NDK_HOME:ro"             -w "$GITHUB_WORKSPACE" ubuntu:26.04 bash -ec '
+              apt-get update
+              apt-get install -y --no-install-recommends ca-certificates git python3 python3-venv python3-pip ninja-build pkg-config dpkg-dev xz-utils
+              git config --global --add safe.directory "*"
+              bash games/totk/android/turnip/build.sh'
       - name: Write the signing key
         env:
           KEY_B64: ${{ secrets.RELEASE_KEY_PEM_B64 }}
