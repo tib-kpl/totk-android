@@ -42,6 +42,10 @@ jobs:
       - name: Install build-tool test dependencies
         run: python -m pip install -r games/totk/requirements.txt
       - name: Run synthetic container, update and native path tests
+        # The runner image exposes /dev/dri/card0 without letting the job open it, and the i915 write-back test
+        # treats that as a failure rather than a skip. No i915 GPU here anyway: point it at an absent node.
+        env:
+          WB_ALIAS_DRM_NODE: /dev/dri/none
         run: python -m unittest discover -s tests -v
       # UBSan only (an AddressSanitizer build of this test hung on macOS 26, where these checks first ran).
       - name: Check native path parser with the undefined-behavior sanitizer
