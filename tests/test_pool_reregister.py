@@ -15,7 +15,7 @@ import unittest
 
 import test_main_defects as fixture
 
-PRE_FIX = '157f718e92457fb2a11dfc54087ec89514522bea'
+PRE_FIX = '934023bc10c931701880bfbe829feefbc1ba0f71'
 POOL_PATH = 'games/totk/android/gfx/nvn_vk.c'
 
 SCENARIO = r'''
