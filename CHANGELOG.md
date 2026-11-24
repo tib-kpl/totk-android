@@ -10,6 +10,31 @@ the game version it runs is shown separately. versionCode = major × 10000 + min
 - `.github/workflows/ci.yml` (one pipeline: tests, then on `main` the signed release APK published as a GitHub release).
 
 ### Developer tools
+- Make optional frame-timeline and fence-evidence ring producers single-attempt/nonblocking, with counted
+  dropped updates and skipped snapshots. Reuse per-walk elapsed clocks instead of enabling recorder
+  opcode/category probes, and batch recorder-worker draws/descriptors at slot assembly instead of each job.
+  Retain slot/walk/input/presentation evidence and ordinary default-off behavior.
+  Gate the new per-walk/per-assembly accounting bodies before all counter/slot work when disabled;
+  test both probe regions stay unentered with timeline off, including with explicit recorder profiling on.
+  Measured AYN Thor, 30-fps standing, 20-minute launches: walk CPU about 15.7 ms/frame off,
+  20.4 ms old-on (+29.6%), and 15.5 / 15.7 ms new-on (−1.3% / +0.3%, within noise).
+  New-off was −0.4% / −0.8% versus the measured main baseline, within noise; sample loss ≤0.07%
+  of producer-update attempts. Observed intervals ≥60 / ≥80 ms per 20 minutes fell from 20 / 11
+  old-on to 1 / 0 and 4 / 0 new-on. The first run's ordinary >50 ms gate failed (new-on 37 / 63,
+  off 19–37 per 20 minutes), but an eight-launch paired follow-up CLEARED the rewritten diagnostic
+  on this AYN Thor, one Hateno scene, standing only, 30-fps cap: ON 31.43 / 10.10 / 22.44 / 30.30
+  (mean 23.57) versus OFF 21.32 / 39.27 / 33.67 / 35.92 (mean 32.55) per 20 minutes;
+  paired ON-minus-OFF +10.10 / −29.17 / −11.23 / −5.62 and walk-CPU overhead +0.19%.
+  Frozen rule: mean difference ≤10, ON mean ≤1.30×OFF mean, not all pair differences positive,
+  at most one ON value above OFF maximum; all passed. The first run's single high launch is
+  consistent with launch-to-launch variation, not a demonstrated diagnostic effect.
+  It still adds per-frame work when on and remains a diagnostic: prefer OFF for final tail/performance
+  acceptance unless present identically in both arms. Old-on worst-frame figures are suspect and
+  walk CPU about 30% inflated. CPU uses medians of ordinary block means; >50 ms rates use
+  complete-report exposure estimates, unlike exact 20-minute timeline windows. Fixed-order,
+  single-device/scene standing evidence does not establish general tail safety. Measurements are
+  old/main 8bbbce5 versus rewritten 8dc331f, not the integrated head; see DEBUGGING.md and
+  `.scratch/perf/frame-timeline-fix/thor-pairs/report.md` for the follow-up source and limitations.
 - Add enabled-only `TOTK_WB_ALIAS=1` path coverage: cumulative operations/bytes by landing, report/event store
   and publication, separated into alias and fallback reasons at periodic memory reports, Android pause and normal exit.
   Publish pause-report enablement atomically so early Android lifecycle callbacks can race Vulkan initialization safely.
@@ -51,6 +76,14 @@ the game version it runs is shown separately. versionCode = major × 10000 + min
   Keep presentation-time varying statistics independent of module creation. Cache-only probes now defer
   absent/in-flight replacements without IO or a shader-module wait; unrelated interfaces build concurrently.
   Mandatory synchronous builds can still wait for required driver work; no device latency bound is claimed.
+- Retire cached and deferred texel-buffer views of an owning pool's exact Vulkan buffer before unbacking destroys it,
+  using the existing arena-buffer release mechanism and existing GPU-use wait. Image/storage invalidation is unchanged.
+  Restore guest pages/private aliases under the pool lock before view retirement, so concurrent same-range
+  registration cannot have its new backing overwritten by the old pool's restoration.
+- Pack multi-element direct and frame-generation descriptor writes into fixed Vulkan-typed scratch arrays.
+  Singleton direct writes retain the existing batched path; descriptor hashing and immutable ownership are unchanged.
+- Retry transient image creation/allocation OOM failures after 1–64 submissions, with at most four retry attempts
+  per submission across recorder threads. Permanent unsupported-format/type failures remain failed; retry logs are bounded.
 - Refresh the shared shader list with seven more upstream variants applicable to game 1.4.3
   (`5fb080496ab7`, V rows only). Fresh host translation prepares 25,039 modules instead of 25,032,
   with zero failures and about 430 KiB of additional packed data. Existing shader packs stay valid;
