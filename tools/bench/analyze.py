@@ -13,7 +13,7 @@ cpuinfo_max kHz; GPU max_gpuclk, available frequencies, devfreq max, power level
 A run is freq_stable false when any effective cap (CPU scaling_max per cluster, GPU cap) differs between those
 snapshots, between the sampler's records over the pans, or from the device's first scene: such a run is not usable
 for comparison and never becomes a baseline. Each device gets freq_limits (its first pan's start) and freq_signature
-(benchlib.device_signature: model + SoC, settings_env hash, CPU caps, GPU cap).
+(benchlib.device_signature: model + SoC, settings_env hash, effective alias/warning states/mode, CPU caps, GPU cap).
 
 --arms (in-session A/B, tools/bench/ab.sh): the log's live-switch lines ([totk-ctl] gen=N frame=F applied ... / mark
 ...) split the session into generations; generation N covers the frames after F up to the next generation's frame.
@@ -32,7 +32,7 @@ its "caveats" are appended to the generated ones. Never writes a baseline file (
 import argparse, collections, datetime, json, os, re, statistics, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from benchlib import SCHEMA, caps_of_limits, device_signature, guard_output, parse_freq_tokens, sig_caps_text  # noqa: E402
+from benchlib import SCHEMA, SWITCH_EVIDENCE_VERSION, SWITCH_KEYS, caps_of_limits, device_signature, guard_output, log_switch_states, open_current_log, parse_freq_tokens, sig_caps_text  # noqa: E402
 from sampler import GPU_SNAPSHOT_FILE, gpu_residency_delta, parse_gpu_snapshots, power_of_tokens  # noqa: E402
 from provenance import compilation_of, compilation_summary, compile_record, scene_state  # noqa: E402
 
@@ -65,6 +65,80 @@ AB_METRICS = ('fps_steady', 'dip_time_fraction', 'throughput_fps', 'fps_mean', '
 PRESENT_BIN_LABELS = ('<12.5', '12.5-20.9', '20.9-29', '29-37.5', '37.5-45.8', '>=45.8')
 
 
+def capture_switch_line(capture, line, number):
+    """Keep every state observation with its position; never overwrite an earlier launch or mode."""
+    if '[totk-app] build' in line:
+        if line.startswith('[totk-app] build ') and line.endswith('\n'):
+            capture['starts'].append(number)
+        else:
+            capture['errors'].append('invalid or non-raw launch-start record')
+    if line.startswith('[nvn-vk] frame ') and re.fullmatch(
+            r'\[nvn-vk\] frame \d+: [\d.]+ fps over the last 300[^\n]*\n', line):
+        capture['presents'].append(number)
+    records = capture['records']
+    if '[totk-switches]' in line:
+        fields = collections.defaultdict(list)
+        invalid = not line.startswith('[totk-switches] ') or not line.endswith('\n')
+        for token in line.split('[totk-switches]', 1)[1].split():
+            if '=' not in token:
+                invalid = True
+                continue
+            key, value = token.split('=', 1)
+            fields[key].append(value)
+        version = fields.get('v')
+        marker_keys = SWITCH_KEYS if version == ['2'] else SWITCH_KEYS[:2]
+        invalid |= version not in (['1'], ['2']) or bool(set(fields) - {'v', *marker_keys, 'map_warn_mode'})
+        for key in SWITCH_KEYS:
+            if key == 'TOTK_MENU_CAPTURE_FIX' and version == ['1'] and key not in fields:
+                continue  # v1 did not report menu outcome; independent raw evidence must establish it.
+            values = fields.get(key, [])
+            allowed = ('on', 'off', 'UNKNOWN') if key == 'TOTK_MENU_CAPTURE_FIX' else ('on', 'off')
+            error = 'invalid state-marker framing, version or fields' if invalid else None
+            if len(values) != 1 or values[0] not in allowed:
+                error = 'missing, duplicated or invalid ' + key + ' marker field'
+            state = values[0] if len(values) == 1 and values[0] in allowed else 'UNKNOWN'
+            record = {'line': number, 'kind': 'marker', 'state': state, 'error': error}
+            if key == 'TOTK_MAP_WARN':
+                modes = fields.get('map_warn_mode', [])
+                mode = int(modes[0]) if len(modes) == 1 and modes[0] in ('0', '1', '2', '3') else None
+                if mode is None or (state == 'off') != (mode == 0):
+                    record['error'] = 'missing, duplicated, invalid or inconsistent warning mode'
+                record['mode'] = mode
+            records[key].append(record)
+    if 'write-back alias:' in line.lower():
+        valid = re.fullmatch(r'\[nvn-vk\] write-back alias: enabled(?: [^\n]*)?\n', line)
+        records['TOTK_WB_ALIAS'].append({'line': number, 'kind': 'alias-start', 'state': 'on',
+            'error': None if valid else 'invalid or non-raw alias startup record'})
+    if 'memory write-back alias' in line.lower():
+        buckets = ','.join(reason + r':\d+/\d+' for reason in
+                           ('alias', 'registry', 'ownership', 'mixed', 'non-dmabuf', 'retired', 'other'))
+        paths = (r'\[nvn-vk\] memory write-back alias paths: phase=(?:periodic|pause|exit) cumulative=1 '
+                 + ' '.join(site + '=' + buckets for site in ('landing', 'store', 'publication')) + '\n')
+        mappings = (r'\[nvn-vk\] memory write-back aliases: mappings \d+, bytes \d+ '
+                    r'\(backend-private RW dma-buf; not guest pools\)\n')
+        valid = re.fullmatch(paths, line) or re.fullmatch(mappings, line)
+        records['TOTK_WB_ALIAS'].append({'line': number, 'kind': 'telemetry', 'state': 'on',
+            'error': None if valid else 'invalid or non-raw alias statistics record'})
+    if re.search(r'\[map-warn\]\s+start', line, re.I):
+        match = re.fullmatch(r'(?:\[(?:totk-gfx|dirty)\] )?\[map-warn\] started mode=([123])(?: [^\n]*)?\n', line)
+        valid = match is not None and len(re.findall(r'\bmode=', line)) == 1
+        records['TOTK_MAP_WARN'].append({'line': number, 'kind': 'warning-start', 'state': 'on',
+            'mode': int(match[1]) if match else None,
+            'error': None if valid else 'invalid, duplicated-mode or non-raw warning startup record'})
+    if re.search(r'\[totk\] 1\.4\.3 menu capture (?:experiment|fix)', line):
+        prefix = r'\[totk\] 1\.4\.3 menu capture '
+        if re.fullmatch(prefix + r'experiment: armed or requested pane \(original admission\), veneers \+0x[0-9a-f]+/\+0x[0-9a-f]+\n', line):
+            state, error = 'on', None
+        elif re.fullmatch(prefix + r'(?:experiment off \([^\n]*\)|fix inactive: (?:iOS (?:runtime|export)|non-Android default))\n', line):
+            state, error = 'off', None
+        elif re.fullmatch(prefix + r'fix skipped: [^\n]+\n', line):
+            state, error = 'UNKNOWN', None
+        else:
+            state, error = 'UNKNOWN', 'invalid or non-raw menu startup record'
+        records['TOTK_MENU_CAPTURE_FIX'].append({'line': number, 'kind': 'menu-start', 'state': state,
+                                               'error': error})
+
+
 def parse_log(path):
     timing, gpu, fps, stut, longf, info = {}, {}, {}, {}, [], {}
     frame_ms, near33, draw_samples = {}, {}, []
@@ -72,60 +146,63 @@ def parse_log(path):
     last_window = None
     recording, present_stats, present_bins, traces = {}, {}, {}, {}
     frame_p99 = {}
-    for line in open(path, encoding='utf-8', errors='replace'):
-        if record := compile_record(line):
-            compilations[record[0]] = record[1]
-        if m := re.search(r'计时 至帧 (\d+)： 帧时间 p50 ([\d.]+) / p95 ([\d.]+) / 最大 ([\d.]+) ms', line):
-            timing[int(m[1])] = tuple(float(x) for x in m.groups()[1:])
-        if m := re.search(r'帧间隔 至帧 (\d+)：>16\.7ms \d+ / (\d+) 帧，p99 ([\d.]+) ms', line):
-            frame_p99[int(m[1])] = (float(m[3]), int(m[2]))
-        if m := re.search(r'\[nvn-vk\] frame (\d+), per frame: recording ([\d.]+) ms, waiting for the GPU ([\d.]+) ms, GPU ([\d.]+) ms', line):
-            gpu[int(m[1])] = float(m[4])
-            recording[int(m[1])] = float(m[2])
-        if m := re.search(r'\[nvn-vk\] frame (\d+): ([\d.]+) fps over the last 300', line):
-            fps[int(m[1])] = float(m[2])
-            last_window = int(m[1])
-            if d := re.search(r'over the last 300, (\d+) draws\b', line):
-                draw_samples.append((last_window, int(d[1])))
-        if m := re.search(r'\[nvn-vk\] frame (\d+), stutter: longest frame ([\d.]+) ms, (\d+) frames over (\d+) ms, (\d+) over (\d+) ms', line):
-            stut[int(m[1])] = (int(m[3]), int(m[4]), int(m[5]), int(m[6]))
-        if m := re.search(r'\[长帧\] 帧 (\d+)（([\d.]+) s）整帧 ([\d.]+) ms', line):
-            longf.append((int(m[1]), float(m[3])))
-            frame_ms[int(m[1])] = float(m[3])
-        if m := re.search(r'\[frame-tl late\] frame=(\d+).*?\bgame_iv=([\d.]+)', line):
-            frame_ms.setdefault(int(m[1]), float(m[2]))
-        if last_window is not None and 'window present-fence cadence,' in line:
-            if m := re.search(r'p50/p95/p99=([\d.]+)/([\d.]+)/([\d.]+)ms', line):
-                present_stats[last_window] = {'present_p95_ms': float(m[2]), 'present_p99_ms': float(m[3])}
-        if last_window is not None and (m := re.search(
-                r'window present-fence interval bins ms \[<12.5,12.5-20.9,20.9-29,29-37.5,37.5-45.8,>=45.8\]: all=(\d+)/(\d+)/(\d+)/(\d+)/(\d+)/(\d+)', line)):
-            bins = [int(x) for x in m.groups()]
-            present_bins[last_window] = bins
-            if sum(bins) == 300:
-                near33[last_window] = bins[3]
-        if 'game_version' not in info and (m := re.search(r'^\[totk\] game version (\S+)', line)):
-            info['game_version'] = m[1]
-        if 'turnip' not in info and (m := re.search(r'driver sha256=([0-9a-f]{64})', line)):
-            info['turnip'] = m[1]
-        if 'settings' not in info and (m := re.search(r'^\[totk-app\] settings\.env \([^)]*\): (.*)$', line)):
-            info['settings'] = dict(kv.split('=', 1) for kv in m[1].split() if '=' in kv)
-        if 'device lost' in line.lower():
-            info['device_lost'] = info.get('device_lost', 0) + 1
-        if '[present-trace]' in line:
-            fields = dict(re.findall(r'(\w+)=(\S+)', line))
-            keys = ('id', 'generation', 'source_frame', 'display_ns')
-            if all(fields.get(k, '').isdigit() for k in keys):
-                row = {k: int(fields[k]) for k in keys}
-                key = row['generation'], row['id']
-                # Identical duplicate delivery is harmless; conflicting identities cannot establish an interval.
-                traces[key] = row if key not in traces or traces[key] == row else None
+    capture = info['switch_capture'] = {'evidence_version': SWITCH_EVIDENCE_VERSION,
+        'starts': [], 'presents': [], 'errors': [], 'records': {key: [] for key in SWITCH_KEYS}}
+    with open_current_log(path) as log:
+        for number, line in enumerate(log, 1):
+            capture_switch_line(capture, line, number)
+            if record := compile_record(line):
+                compilations[record[0]] = record[1]
+            if m := re.search(r'计时 至帧 (\d+)： 帧时间 p50 ([\d.]+) / p95 ([\d.]+) / 最大 ([\d.]+) ms', line):
+                timing[int(m[1])] = tuple(float(x) for x in m.groups()[1:])
+            if m := re.search(r'帧间隔 至帧 (\d+)：>16\.7ms \d+ / (\d+) 帧，p99 ([\d.]+) ms', line):
+                frame_p99[int(m[1])] = (float(m[3]), int(m[2]))
+            if m := re.search(r'\[nvn-vk\] frame (\d+), per frame: recording ([\d.]+) ms, waiting for the GPU ([\d.]+) ms, GPU ([\d.]+) ms', line):
+                gpu[int(m[1])] = float(m[4])
+                recording[int(m[1])] = float(m[2])
+            if m := re.search(r'\[nvn-vk\] frame (\d+): ([\d.]+) fps over the last 300', line):
+                fps[int(m[1])] = float(m[2])
+                last_window = int(m[1])
+                if d := re.search(r'over the last 300, (\d+) draws\b', line):
+                    draw_samples.append((last_window, int(d[1])))
+            if m := re.search(r'\[nvn-vk\] frame (\d+), stutter: longest frame ([\d.]+) ms, (\d+) frames over (\d+) ms, (\d+) over (\d+) ms', line):
+                stut[int(m[1])] = (int(m[3]), int(m[4]), int(m[5]), int(m[6]))
+            if m := re.search(r'\[长帧\] 帧 (\d+)（([\d.]+) s）整帧 ([\d.]+) ms', line):
+                longf.append((int(m[1]), float(m[3])))
+                frame_ms[int(m[1])] = float(m[3])
+            if m := re.search(r'\[frame-tl late\] frame=(\d+).*?\bgame_iv=([\d.]+)', line):
+                frame_ms.setdefault(int(m[1]), float(m[2]))
+            if last_window is not None and 'window present-fence cadence,' in line:
+                if m := re.search(r'p50/p95/p99=([\d.]+)/([\d.]+)/([\d.]+)ms', line):
+                    present_stats[last_window] = {'present_p95_ms': float(m[2]), 'present_p99_ms': float(m[3])}
+            if last_window is not None and (m := re.search(
+                    r'window present-fence interval bins ms \[<12.5,12.5-20.9,20.9-29,29-37.5,37.5-45.8,>=45.8\]: all=(\d+)/(\d+)/(\d+)/(\d+)/(\d+)/(\d+)', line)):
+                bins = [int(x) for x in m.groups()]
+                present_bins[last_window] = bins
+                if sum(bins) == 300:
+                    near33[last_window] = bins[3]
+            if 'game_version' not in info and (m := re.search(r'^\[totk\] game version (\S+)', line)):
+                info['game_version'] = m[1]
+            if 'turnip' not in info and (m := re.search(r'driver sha256=([0-9a-f]{64})', line)):
+                info['turnip'] = m[1]
+            if 'settings' not in info and (m := re.search(r'^\[totk-app\] settings\.env \([^)]*\): (.*)$', line)):
+                info['settings'] = dict(kv.split('=', 1) for kv in m[1].split() if '=' in kv)
+            if 'device lost' in line.lower():
+                info['device_lost'] = info.get('device_lost', 0) + 1
+            if '[present-trace]' in line:
+                fields = dict(re.findall(r'(\w+)=(\S+)', line))
+                keys = ('id', 'generation', 'source_frame', 'display_ns')
+                if all(fields.get(k, '').isdigit() for k in keys):
+                    row = {k: int(fields[k]) for k in keys}
+                    key = row['generation'], row['id']
+                    # Identical duplicate delivery is harmless; conflicting identities cannot establish an interval.
+                    traces[key] = row if key not in traces or traces[key] == row else None
     info['frame_ms'], info['near33'] = frame_ms, near33
     info['draw_rates'] = cumulative_draw_rates(draw_samples)
     info['compilations'] = compilations
     info.update(recording=recording, present_stats=present_stats, present_bins=present_bins, frame_p99=frame_p99,
                 present_intervals=present_trace_intervals(traces))
     return timing, gpu, fps, stut, longf, info
-
 
 
 def present_trace_intervals(traces):
@@ -241,7 +318,7 @@ def parse_ctl(path):
     """The live-switch generations of a log, in order: [{'gen', 'frame', 'applied': [tokens], 'marks': [texts],
     'arm', 'block', 'direction'}]. Missing direction marks in old runs are inferred from the block index."""
     gens = {}
-    with open(path, encoding='utf-8', errors='replace') as fh:
+    with open_current_log(path) as fh:
         lines = [line.rstrip('\n') for line in fh if '[totk-ctl]' in line]
     for line in lines:
         if not (m := CTL_RE.search(line)):
@@ -837,6 +914,7 @@ def main():
     }
     deep_merge(doc, meta)
     for dev in order:
+        doc['devices'][dev]['effective_switches'] = log_switch_states(logs[dev][5], doc['build'])
         sig = device_signature(doc, dev)
         if sig:
             doc['devices'][dev]['freq_signature'] = {'sha256': sig['sha256'], 'short': sig['short'],

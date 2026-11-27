@@ -90,8 +90,16 @@ public final class CompanionView extends View implements SnapshotPoller.Listener
     }
     @Override protected void onDetachedFromWindow() {
         poller.stop();
-        if (assets != null) { assets.close(); assets = null; }
+        if (assets != null) { assets.close("view_detached"); assets = null; }
         super.onDetachedFromWindow();
+    }
+    @Override protected void onVisibilityChanged(View changedView, int visibility) {
+        super.onVisibilityChanged(changedView, visibility);
+        if (assets != null) assets.setCacheVisible(isShown() && getWindowVisibility() == VISIBLE);
+    }
+    @Override protected void onWindowVisibilityChanged(int visibility) {
+        super.onWindowVisibilityChanged(visibility);
+        if (assets != null) assets.setCacheVisible(isShown() && visibility == VISIBLE);
     }
     @Override protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
@@ -191,6 +199,7 @@ public final class CompanionView extends View implements SnapshotPoller.Listener
     @Override protected void onDraw(Canvas c) {
         super.onDraw(c);
         if (assets == null) return;
+        assets.logCaches(isShown() && getWindowVisibility() == VISIBLE, android.os.SystemClock.elapsedRealtime());
         targets.clear(); buttonRequests.clear();
         actionView = poller.actions.state();
         INK = assets.color("text", 0xffe9e5d5); MUTED = assets.color("textDim", 0xffaaa997);
@@ -796,9 +805,17 @@ public final class CompanionView extends View implements SnapshotPoller.Listener
         }
     }
     private String coordinates() {
-        double x = data.coordinate(0), y = data.coordinate(1), z = data.coordinate(2);
-        if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)) return "Position unavailable";
-        return String.format(Locale.ROOT, "%+.0f  %+.0f  %+.0f", x, y, z);
+        // Recover the original guest floats before doing the game's single-precision height subtraction.
+        float x = (float)data.coordinate(0), y = (float)data.coordinate(1), z = (float)data.coordinate(2);
+        if (!Float.isFinite(x) || !Float.isFinite(y) || !Float.isFinite(z)) return "Position unavailable";
+        // As the game's map shows them: x, -z (north positive) and the height above its 105.5 m line, each truncated
+        // to a whole number as four digits with only a minus sign (main+0x96cd40 keeps y - 105.5 and -z; the
+        // message formatter at main+0xce1918 prints "-%04d" / "%04d").
+        return mapNumber(x) + ", " + mapNumber(-z) + ", " + mapNumber(y - 105.5f);
+    }
+    private static String mapNumber(double value) {
+        long n = (long)value;   // toward zero, like the game's float-to-int conversion
+        return n < 0 ? String.format(Locale.ROOT, "-%04d", -n) : String.format(Locale.ROOT, "%04d", n);
     }
     private static String number(JSONObject value, String key) {
         if (!value.has(key) || value.isNull(key)) return "—";

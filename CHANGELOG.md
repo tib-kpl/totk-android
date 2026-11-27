@@ -10,6 +10,43 @@ the game version it runs is shown separately. versionCode = major × 10000 + min
 - `.github/workflows/ci.yml` (one pipeline: tests, then on `main` the signed release APK published as a GitHub release).
 
 ### Developer tools
+- Fix the pre-existing thermal-step veneer on the real 1.4.3 Android rewrite: its mutable floor
+  is about 25 MiB past native text, outside an LDR-literal's reach. Use ADRP+LDR and a flag-free
+  clamp for the published one/two-tick floor, retaining the same 108-byte tail allocation.
+  Model the full rewritten image in host fixtures and verify all floor addresses/register semantics.
+- Make menu/thermal, FPS60 hardening/hysteresis and DRS startup guard failures refuse-and-log
+  without exiting or partially installing a group. Preflight full module bounds and generated B/ADRP
+  references; cover all switch combinations/install orders on the complete Android rewrite geometry,
+  corrupted sites/padding and invalid layouts, plus real 30/60-preset startup with player-supplied data.
+- Enable PR #44's Android 1.4.3 quick-menu capture fix by default: unset or exact `TOTK_MENU_CAPTURE_FIX=1`
+  uses the contributor's original armed-OR-requested admission; `=0` leaves guest code untouched.
+  Other explicit values remain off. Keep other writable hosts opt-in, and explicitly exclude both the
+  iOS runtime and writable-host iOS export before any write; non-1.4.3 paths are unchanged.
+  Our added visibility guard suppressed the fix:
+  Odin requests were pending while hidden; original admission removed the black backgrounds in the finite
+  30/60-fps comparison, while the guarded version did not. Remove the guarded alternative entirely.
+  Retain all-before-any-write bounds, original-word, padding and branch checks. Split the veneer across
+  two existing text-tail gaps so thermal-step and FPS60 hardening coexist without moving their code.
+  Test real ARM admission/continuation/completion, unset/explicit-on byte equality, explicit-off
+  no-write behavior and all six install orders. This does not prove preparation/publication safety
+  or a once-per-opening capture bound.
+- Include actual menu admission (applied/on, inactive/off, refused/UNKNOWN) in the one-time startup
+  switch marker and benchmark comparison/ledger workload signatures. Reconcile raw current-launch
+  startup evidence, retain legacy marker parsing without inventing menu OFF, and require resolver
+  evidence version 4 for the combined current-launch/menu contract. Pin all three historical opt-outs;
+  keep immutable baseline metrics/hashes unchanged.
+- Log the frozen effective write-back-alias state and map-warning mode once at first presenter startup,
+  including explicit opt-outs, so benchmark tools need not infer build-dependent defaults from menu settings.
+- Record effective alias/warning states from complete startup evidence, including the warning mode, in benchmark
+  signatures and comparison admission. UNKNOWN never matches; missing lines are not silently off. Preserve pinned
+  pre-switch baseline numbers/hashes and require explicit `TOTK_WB_ALIAS=0 TOTK_MAP_WARN=0` for historical controls.
+- Reconcile every positioned benchmark switch-state record inside an independently closed startup bracket.
+  Reject stale, duplicate, malformed and conflicting records per switch before marker or pre-switch-provenance
+  admission; require current evidence metadata so older resolver results cannot bypass UNKNOWN rejection.
+  Preserve window metrics and immutable baseline identities.
+- Scope all three effective-switch states, including menu admission and both startup-bracket ends,
+  to the current launch in retained ten-launch logs. Historical markers or a migrated pre-history segment
+  never authenticate missing, different or incomplete current menu admission.
 - Make optional frame-timeline and fence-evidence ring producers single-attempt/nonblocking, with counted
   dropped updates and skipped snapshots. Reuse per-walk elapsed clocks instead of enabling recorder
   opcode/category probes, and batch recorder-worker draws/descriptors at slot assembly instead of each job.
@@ -35,7 +72,7 @@ the game version it runs is shown separately. versionCode = major × 10000 + min
   single-device/scene standing evidence does not establish general tail safety. Measurements are
   old/main 8bbbce5 versus rewritten 8dc331f, not the integrated head; see DEBUGGING.md and
   `.scratch/perf/frame-timeline-fix/thor-pairs/report.md` for the follow-up source and limitations.
-- Add enabled-only `TOTK_WB_ALIAS=1` path coverage: cumulative operations/bytes by landing, report/event store
+- Add enabled-only `TOTK_WB_ALIAS` path coverage (unset or `=1`): cumulative operations/bytes by landing, report/event store
   and publication, separated into alias and fallback reasons at periodic memory reports, Android pause and normal exit.
   Publish pause-report enablement atomically so early Android lifecycle callbacks can race Vulkan initialization safely.
 - Add launch-only, default-off `TOTK_BENCH_TIME=HH:MM` for restored-save benchmark arms.
@@ -56,12 +93,48 @@ the game version it runs is shown separately. versionCode = major × 10000 + min
   Per-thread period-weighted self/inclusive reports separate walker, recorder, submit and game CPU.
 - Give newly linked `libtotk.so` a SHA-1 GNU build ID retained in the packaged library,
   so native profiles can identify matching unstripped symbols without relying on source revision alone.
-- Add experimental `TOTK_FRAME_RATE_HINT_HZ` (default off, needs `TOTK_FRAME_RATE_HINT=1`): request integer
-  rates advertised by the current game-window display, or `max` for its highest rate (including fractional Hz),
-  through the existing FIXED_SOURCE window/AHB-child hints. Invalid or unavailable rates retain the old hint
-  policy; game pacing and Android settings remain unchanged.
+- Add `TOTK_FRAME_RATE_HINT_HZ`: request integer rates advertised by the current game-window display,
+  or `max` for its highest rate (including fractional Hz), through FIXED_SOURCE window/AHB-child hints.
+  Ordinary fixed-rate Samsung gameplay now defaults to `max`; elsewhere explicit enablement is required.
+  Invalid, unavailable or zero rates fall back to content-rate hints; Android's user limits remain authoritative.
 
 ### Runtime
+- Correct ordinary Android capped pacing from guest 60-Hz ticks to display slots: 30/60-fps caps
+  remain 30/60 on 60/120-Hz panels. Non-divisor displays round up to whole slots (at 144 Hz,
+  30/60 choices yield 28.8/48 fps). `TOTK_FRAME_RATE_HINT=0` disables refresh votes, not this cap fix.
+  Explicit display/acquire clocks, frame generation, FPS Auto and uncapped policies retain their own authority.
+- Keep validated refresh preferences while foregrounded, clearing on pause and restoring on resume.
+  The Samsung controller-only idle fix still requires affected-Samsung testing; local handhelds cannot verify it.
+- Show non-touchable startup stage/progress until the first real compositor handoff, not measured scanout.
+  Reuse metadata-bound verified RomFS overlay proofs on warm launches; this is not a fresh full hash.
+  `TOTK_ROMFS_VERIFY=full` forces rehashing.
+- Retain the current native log plus up to nine old launches in the selected game-data folder, with lock/temp
+  siblings. Old launches retain roughly 512 KiB each (head/tail; middles discarded); the live log is unbounded.
+  Failed compaction preserves evidence and may exceed that history budget. Benchmark tools select the latest launch.
+- Stop startup-popup polling and dismiss the popup when its activity finishes or is destroyed;
+  repeated resume calls keep a single poll queued. Host tests execute the production Java UI
+  with framework doubles and the native progress snapshot through a real host JVM/JNI bridge.
+  Resolve JNI headers from the selected compiler's actual JVM home, including version-manager shims;
+  missing headers skip with a clear prerequisite reason.
+- Dismiss the startup indicator before any game-activity update or previous-session notice can take focus.
+  A pending update comes first, then the notice; both wait for the first real handoff. Keep session-token
+  recording independent of that UI gate and preserve background hold and refresh-request lifecycle.
+- Report companion tile, overview, decoration and image LRU occupancy/budgets, allocation-byte high water,
+  lookup/decode counts and evictions through the native log. Snapshot/fill/eviction delivery shares one process-wide
+  ten-second completion-based limit across recreated stores. A second ten-second allowance batches lifecycle events;
+  at most two lines per rolling ten seconds, only while visible, with monotonic store IDs and bounded/loss-counted
+  create/close history. Counters remain per store; cache budgets, decode policy and eviction order are unchanged.
+  Snapshot into preallocated storage, then format/write on one bounded process-wide background task outside cache
+  locks; slow native logging cannot occupy the draw or bitmap-decoder thread. Logcat mirroring remains opt-in.
+- Follow Link's environment-based map layer, display in-game map coordinates without losing integer-boundary
+  precision, and separate overview/detail caches to stop stationary tile eviction loops. Reject invalid, unreadable
+  or replaced layer samples using the previous layer heuristic; always keep the visible detail tiles plus one, scale
+  only the extra cache margin by Android memory class, and serialize resize decisions. Use plain layer parameters
+  even when their flag bits are clear: the tested Thor surface scene had `01,01,00` and the plain values gave the
+  correct layer; scenes where overrides differ remain untested. Log fallback reason classes at most once per minute.
+  Thanks to @Dorkington ([#47](https://github.com/AurelioB/totk-android/pull/47)).
+  Host regressions cover native layer guards, native JSON → Java coordinates and deterministic cache convergence;
+  surface/sky/Depths transitions, zoom appearance, memory and decoder CPU still need dual-screen device checks.
 - Add experimental, default-off `TOTK_MAP_WARN=1`: count process maps on the existing low-priority
   sampler about every five seconds, independently of frame lag. Log at 80%; show `MAP LIMIT NEAR` /
   `SAVE AND RESTART GAME SOON` at 88%, even with the performance overlay off; clear below 84%.
@@ -99,7 +172,8 @@ the game version it runs is shown separately. versionCode = major × 10000 + min
   (`5fb080496ab7`, V rows only). Fresh host translation prepares 25,039 modules instead of 25,032,
   with zero failures and about 430 KiB of additional packed data. Existing shader packs stay valid;
   run a full shader rebuild to receive the added coverage.
-- Add experimental, launch-only `TOTK_WB_ALIAS=1` (default off): use a retained same-backing private CPU mapping
+- Enable launch-only `TOTK_WB_ALIAS` by default when unset (`=1` also enables; `=0` restores the original path):
+  use a retained same-backing private CPU mapping
   for supported dirty-tracked write-back extents and eligible report/event/uniform stores, without temporarily
   making protected guest pages writable. Preserve CPU-write detection, GPU synchronization and zero-on-recommit;
   unsupported backing and contended report/event/uniform publications keep the old path. This closes the
@@ -107,11 +181,25 @@ the game version it runs is shown separately. versionCode = major × 10000 + min
   Off preserves the original path and logs. First AYN Thor device evidence, over five common completed loads:
   texture GPU-unprotect boundaries 0 versus 17,214; whole-process row growth averaged +1,025 versus +4,535/load.
   No switch-attributable picture corruption was observed. Pooled standing frame tails were SAME, but some individual
-  phases had worse tails; this one ordered alias/legacy pair is not a speed proof. Odin and Duo remain untested.
-  Keep the switch default off; it prevents this fragmentation source, not all mapping growth.
+  phases had worse tails; this one ordered alias/legacy pair is not a speed proof. Odin and Duo were untested
+  in that initial campaign. Later Duo combined no-env/opt-out checks passed; Odin's restart quartet remains
+  INCONCLUSIVE because workload admission failed, not accepted as a non-regression or waived qualification.
+  This mitigates this fragmentation source, not all mapping growth. Final device checks are required before landing
+  the default-on change; existing unsupported-backing/registry-contention fallbacks and their diagnostics are unchanged.
 - Correct the experimental private writer's virtual-mapping authority across production MapVirtual replacements,
   including anonymous unmaps and fallback remaps; serialize replacement and invalidation with borrowed writers.
   Watch-slot-exhausted synchronous records keep the original no-token guest-store path rather than bypass ownership.
+- Diagnose interrupted Android game sessions on launcher/title return using matched platform exit history,
+  with a once-only, controller-dismissable recovery notice. Low-memory exits explain possible unsaved
+  progress loss; unknown endings remain unclassified. Updates, normal closes and setup-only exits do not
+  show a game-loss warning. Default on; exact `TOTK_EXIT_NOTICE=0` silences it. No survival guarantee.
+  Receipt/diagnostic IO and cross-process delivery claiming run off the UI thread; native lifecycle only enqueues.
+  Platform summary tokens and exact exit-record identities replace wall-clock ordering. Missing/rotated history
+  or cleared state stays silent; unshown delivery survives activity recreation without duplicate dialogs.
+- Add experimental `TOTK_GAME_HOLD=1`, off by default: our visible Settings menu binds the live game at foreground-client
+  importance and defers its pause-forced pipeline-cache snapshot. Real background and save-safe Close still flush;
+  a kill during deferral can lose new cache entries. The save protocol is unchanged, not kill-proof. Binding lifecycle
+  and the game's pause/1 s/5 s `oom_score_adj` are logged. Host coverage is not Duo survival evidence.
 - Fix shader translation for compute texture gathers with runtime offsets.
   The translator now lowers those offsets before emitting SPIR-V instead of putting runtime values in constants.
   Existing generated shader seeds need replacement to receive the corrected modules.

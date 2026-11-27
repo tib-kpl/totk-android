@@ -28,6 +28,11 @@ static int observed_create(pthread_t *thread, const pthread_attr_t *attr,
 #undef pthread_create
 #include "vk_overlay.h"
 int runtime_handheld_mode(void) { return 1; }
+int vk_wb_alias_enabled(void) { return 0; } /* This warning-only fixture does not link the Vulkan pool backend. */
+int runtime_menu_capture_state(void) {
+    const char *outcome = getenv("TEST_MENU_CAPTURE_STATE");
+    return outcome ? atoi(outcome) : 0; /* Controlled installer result, not the requested menu environment. */
+}
 static void policy(void) {
     nvn_map_warn_thresholds t = {80,88,84};
     nvn_map_warn_state s = {0};
@@ -72,6 +77,7 @@ static void panel(void) {
 int main(int argc,char **argv) {
     assert(argc==2);
     if (!strcmp(argv[1],"policy")) { policy(); panel(); return 0; }
+    if (!strcmp(argv[1],"marker")) { vk_overlay_mode(); vk_overlay_mode(); return 0; }
     if (!strcmp(argv[1],"test-sequence")) {
         map_warn_configure(); /* pure sampling test: no worker is created */
         assert(g_map_warn_enabled && !atomic_load(&created));
@@ -178,6 +184,21 @@ class MapWarning(unittest.TestCase):
         self.assertEqual(result.stderr.count('maps count unavailable'), 1)
         self.assertEqual(result.stderr.count('map limit is approaching'), 1)
         self.assertEqual(result.stderr.count('SAVE AND RESTART GAME SOON'), 1)
+
+    def test_effective_switch_marker_is_once_even_when_off(self):
+        for value in ('0', '1', '2', '3'):
+            result = self.run_probe('marker', TOTK_MAP_WARN=value, TOTK_OVERLAY='off')
+            lines = [line for line in result.stderr.splitlines() if line.startswith('[totk-switches]')]
+            self.assertEqual(lines, ['[totk-switches] v=2 TOTK_WB_ALIAS=off '
+                f'TOTK_MAP_WARN={"off" if value == "0" else "on"} map_warn_mode={value} TOTK_MENU_CAPTURE_FIX=off'])
+
+    def test_marker_reports_actual_menu_outcome_not_environment_request(self):
+        for outcome, state in (('-1', 'UNKNOWN'), ('0', 'off'), ('1', 'on')):
+            result = self.run_probe('marker', TEST_MENU_CAPTURE_STATE=outcome, TOTK_MENU_CAPTURE_FIX='1',
+                                    TOTK_MAP_WARN='0', TOTK_OVERLAY='off')
+            lines = [line for line in result.stderr.splitlines() if line.startswith('[totk-switches]')]
+            self.assertEqual(len(lines), 1)
+            self.assertTrue(lines[0].endswith(' TOTK_MENU_CAPTURE_FIX=' + state))
 
     def test_off_starts_no_thread_and_has_no_notice(self):
         for value in (None, '0', 'off', 'true', '4', '02'):

@@ -79,6 +79,13 @@ public final class UpdatePrompt {
         throw new AssertionError("update networking is outside this companion fixture");
     }
 }''',
+    'com/aure/totk/setup/BootProgress.java': '''package com.aure.totk.setup;
+public final class BootProgress {
+    public interface Source { String read(long[] counts); }
+    public BootProgress(android.app.Activity activity, Source source, Runnable onFinished) {}
+    public void resume() {}
+    public void pause() {}
+}''',
     'android/os/Build.java': '''package android.os;
 public final class Build {
     public static final class VERSION { public static final int SDK_INT = 33; }
@@ -109,7 +116,14 @@ public class View {
 }''',
     'android/view/Window.java': '''package android.view;
 public class Window {
+    private WindowManager.LayoutParams attributes = new WindowManager.LayoutParams();
     public View getDecorView() { return new View(); }
+    public WindowManager.LayoutParams getAttributes() { return attributes; }
+    public void setAttributes(WindowManager.LayoutParams value) { attributes = value; }
+}''',
+    'android/view/WindowManager.java': '''package android.view;
+public interface WindowManager {
+    class LayoutParams { public float preferredRefreshRate; }
 }''',
     'android/app/Activity.java': 'package android.app; public class Activity extends android.content.Context {}',
     'android/app/NativeActivity.java': '''package android.app;
@@ -147,6 +161,23 @@ public final class SaveMirror {
         public void flush() {}
         public void close(long waitMs) {}
     }
+}''',
+    'com/aure/totk/ExitNotice.java': '''package com.aure.totk;
+final class ExitNotice {
+    static void attach(android.content.Context context) {}
+    static void nativeEvent(int event, byte[] log, byte[] data) {}
+    void resume(android.app.Activity activity, java.util.function.BooleanSupplier ready, java.util.function.Consumer<Boolean> visible) {}
+    void pause() {}
+}''',
+    'com/aure/totk/GameHold.java': '''package com.aure.totk;
+final class GameHold {
+    static void initialize() {
+        if (!android.app.NativeActivity.initialized) throw new AssertionError("hold initialized before NativeActivity");
+    }
+    static void resumed() {}
+    static void paused(android.content.Context context) {}
+    static void updatePause() {}
+    static void destroyed() {}
 }''',
     'com/aure/totk/GameFeedback.java': '''package com.aure.totk;
 final class GameFeedback {
